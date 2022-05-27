@@ -79,7 +79,9 @@ class Flappy:
 
 		self.main_net = Network(self.img_width, self.img_height, name="main_net")
 		self.target_net = Network(self.img_width, self.img_height, name="target_net")
-
+		if len(os.listdir('./checkpoints/main_net/')) != 0:
+			self.main_net.net.load_weights('./checkpoints/main_net/main_checkpoint')	
+			self.target_net.net.load_weights('./checkpoints/target_net/target_checkpoint')
 		loss_fn = tf.keras.losses.MeanSquaredError()
 		optimizer = tf.keras.optimizers.SGD(learning_rate = self.lr)
 
@@ -89,7 +91,7 @@ class Flappy:
 		total_steps = 0
 		total_reward_list = []
 		hist_buffer = []
-		
+		best_reward = 0.0
 		for i in range(self.num_episodes):
 
 			# Adding initial 4 frames to the image buffer array
@@ -151,7 +153,7 @@ class Flappy:
 
 					temp_target_q = np.amax(temp_target_q, 1)
 					temp_target_reward = reward_hist + self.gamma*temp_target_q
-					temp_target_reward =  np.reshape(temp_target_reward, [self.batch_size, 1])
+					temp_target_reward = np.reshape(temp_target_reward, [self.batch_size, 1])
 
 					with tf.GradientTape() as tape:
 						q_values = self.main_net.net(np.stack(state_hist))
@@ -169,70 +171,70 @@ class Flappy:
 					break
 
 				total_steps += 1
-				
+			if total_reward > best_reward:
+				best_reward = total_reward
+				self.main_net.net.save_weights('./checkpoints/main_net/main_checkpoint')	
+				self.target_net.net.save_weights('./checkpoints/target_net/target_checkpoint')
 			print("Total rewards in episode " + str(i) + " is " + str(total_reward) + " total number of steps are " + str(total_steps))
 
 	def play(self, mode="random"):
 
-		init = tf.global_variables_initializer()
+		self.main_net = Network(self.img_width, self.img_height, name="main_net")
+		self.target_net = Network(self.img_width, self.img_height, name="target_net")
+		if len(os.listdir('./checkpoints/main_net/')) != 0:
+			self.main_net.net.load_weights('./checkpoints/main_net/main_checkpoint')	
+			self.target_net.net.load_weights('./checkpoints/target_net/target_checkpoint')
+		#writer = imageio.get_writer('gif/demo.gif', mode='I')
+		game_state = game.GameState()
+		total_steps = 0
+		img_batch = []
 
-		with tf.Session() as sess:
+		action = np.zeros([2])
+		action[0] = 1
+		new_state, reward, done =  game_state.frame_step(action)
 
-			sess.run(init)
+		temp_img = self.pre_process(new_state)
 
-			for i in range(1):
+		for j in range(4):
+			img_batch.insert(len(img_batch), temp_img)
+		
+		for j in range(self.max_steps):
 
-				writer = imageio.get_writer('gif/demo.gif', mode='I')
-
-				game_state = game.GameState()
-				total_steps = 0
-				img_batch = []
-
-				action = np.zeros([2])
-				action[0] = 1
-				new_state, reward, done =  game_state.frame_step(action)
-
-				temp_img = self.pre_process(new_state)
-
-				for j in range(4):
-					img_batch.insert(len(img_batch), temp_img)
+			if mode == "random":
+				temp_action = random.randint(0,1)
+			else:
+				#print(img_batch[3])
+				temp_weights = self.main_net.net(np.reshape(np.stack(img_batch,axis=2),[-1, 80, 80, 4]))
+				temp_action = np.argmax(temp_weights)
+				print(temp_weights)
 				
-				for j in range(self.max_steps):
+			action = np.zeros([2])
+			action[temp_action] = 1
 
-					if(mode=="random"):
-						temp_action = random.randint(0,1)
-					else :
-						temp_weights = self.main_net(np.reshape(np.stack(img_batch,axis=2),[-1, 80, 80, 4]))
-						temp_action = np.argmax(temp_weights)
-						print(temp_weights)
-						
-					action = np.zeros([2])
-					action[temp_action] = 1
+			new_state, reward, done =  game_state.frame_step(action)
 
-					new_state, reward, done =  game_state.frame_step(action)
+			temp_new_state = np.flip(np.rot90(new_state, k=1, axes=(1,0)), 1)
 
-					temp_new_state = np.flip(np.rot90(new_state, k=1, axes=(1,0)), 1)
+			temp_img = self.pre_process(new_state)
+			img_batch.insert(0, temp_img)
+			img_batch.pop(len(img_batch)-1)
 
-					temp_img = self.pre_process(new_state)
-					img_batch.insert(0, temp_img)
-					img_batch.pop(len(img_batch)-1)
+			#print(temp_action)
 
-					print(temp_action)
+			total_steps += 1
+			
+			if done:
+				break
 
-					total_steps += 1
-					
-					if done:
-						break
+		print("Total steps:", str(total_steps))
 
-				print("Total Steps ", str(total_steps))
-
-				sys.exit()
+		sys.exit()
 
 def main():
 
 	mod = Flappy()
-	mod.train()
-	#mod.play()
+	#mod.train()
+	mod.play("ai")
 
 if __name__ == "__main__":
 	main()
