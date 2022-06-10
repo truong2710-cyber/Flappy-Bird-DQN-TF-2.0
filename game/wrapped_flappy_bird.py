@@ -57,6 +57,9 @@ class GameState:
         self.playerFlapAcc =  -9   # players speed on flapping
         self.playerFlapped = False # True when player flaps
 
+    def getScore(self):
+        return self.score
+
     def frame_step(self, input_actions):
         pygame.event.pump()
 
@@ -124,7 +127,7 @@ class GameState:
             terminal = True
             self.__init__()
             reward = -1
-
+        
         # draw sprites
         SCREEN.blit(IMAGES['background'], (0,0))
 
@@ -158,7 +161,6 @@ def getRandomPipe():
         {'x': pipeX, 'y': gapY - PIPE_HEIGHT},  # upper pipe
         {'x': pipeX, 'y': gapY + PIPEGAPSIZE},  # lower pipe
     ]
-
 
 def showScore(score):
     """displays score in center of screen"""

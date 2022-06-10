@@ -75,27 +75,32 @@ class Flappy:
 
 			return temp_action
 
-	def train(self):
-
+	def train(self, mode = 'fixed target'):
+		assert mode in ['fixed target', 'vanilla']
+		hist_score = open("training history/train_hist_{}.txt".format(mode), "w")
+		hist_score.write("Woops! I have deleted the content!")
 		self.main_net = Network(self.img_width, self.img_height, name="main_net")
-		self.target_net = Network(self.img_width, self.img_height, name="target_net")
+		if mode == 'fixed target':
+			self.target_net = Network(self.img_width, self.img_height, name="target_net")
 		if len(os.listdir('./checkpoints/main_net/')) != 0:
-			self.main_net.net.load_weights('./checkpoints/main_net/main_checkpoint')	
-			self.target_net.net.load_weights('./checkpoints/target_net/target_checkpoint')
+			self.main_net.net.load_weights('./checkpoints/main_net/main_checkpoint')
+			if mode == 'fixed target':	
+				self.target_net.net.load_weights('./checkpoints/target_net/target_checkpoint')
+
 		loss_fn = tf.keras.losses.MeanSquaredError()
 		optimizer = tf.keras.optimizers.SGD(learning_rate = self.lr)
 
 		print("Initialized the model")
-		self.copy_network(self.target_net.net, self.main_net.net)
+		if mode == 'fixed target':
+			self.copy_network(self.target_net.net, self.main_net.net)
 			
 		total_steps = 0
 		total_reward_list = []
 		hist_buffer = []
 		best_reward = 0.0
+
 		for i in range(self.num_episodes):
-
 			# Adding initial 4 frames to the image buffer array
-
 			game_state = game.GameState()
 			img_batch = []
 			total_reward = 0.0
@@ -148,42 +153,49 @@ class Flappy:
 					state_hist = [m[0] for m in rand_batch]
 					action_hist = [m[1] for m in rand_batch]
 					next_state_hist = [m[3] for m in rand_batch]
-
-					temp_target_q = self.target_net.net(np.stack(next_state_hist))
-
-					temp_target_q = np.amax(temp_target_q, 1)
-					temp_target_reward = reward_hist + self.gamma*temp_target_q
-					temp_target_reward = np.reshape(temp_target_reward, [self.batch_size, 1])
+					
+					if mode == 'fixed target':
+						temp_target_q = self.target_net.net(np.stack(next_state_hist))
+						temp_target_q = np.amax(temp_target_q, 1)
+						temp_target_reward = reward_hist + self.gamma*temp_target_q
+						temp_target_reward = np.reshape(temp_target_reward, [self.batch_size, 1])
+					
+					elif mode == 'vanilla':
+						temp_target_q = self.main_net.net(np.stack(next_state_hist))
+						temp_target_q = np.amax(temp_target_q, axis=1)
+						temp_target_reward = reward_hist + self.gamma*temp_target_q
+						temp_target_reward = np.reshape(temp_target_reward, [self.batch_size, 1])
 
 					with tf.GradientTape() as tape:
 						q_values = self.main_net.net(np.stack(state_hist))
-						
 						observed_reward = tf.reduce_sum(q_values*tf.one_hot(tf.reshape(np.reshape(np.stack(action_hist),[self.batch_size, 1]),[-1]),2,dtype=tf.float32),1,keepdims=True)
-
 						loss = loss_fn(observed_reward, temp_target_reward)
 					grads = tape.gradient(loss, self.main_net.net.trainable_weights)
 					optimizer.apply_gradients(zip(grads, self.main_net.net.trainable_weights))
 
-					if(total_steps % self.update_freq == 0):
-						self.copy_network(self.target_net.net, self.main_net.net)
+					if mode == 'fixed target':	
+						if total_steps % self.update_freq == 0:
+							self.copy_network(self.target_net.net, self.main_net.net)
 
 				if done:
+					print(game_state.getScore())
+					hist_score.write(str(game_state.getScore()))
 					break
 
 				total_steps += 1
 			if total_reward > best_reward:
 				best_reward = total_reward
-				self.main_net.net.save_weights('./checkpoints/main_net/main_checkpoint')	
-				self.target_net.net.save_weights('./checkpoints/target_net/target_checkpoint')
+				self.main_net.net.save_weights('./checkpoints/main_net/main_checkpoint')
+				if mode == 'fixed target':	
+					self.target_net.net.save_weights('./checkpoints/target_net/target_checkpoint')
 			print("Total rewards in episode " + str(i) + " is " + str(total_reward) + " total number of steps are " + str(total_steps))
+		hist_score.close()
 
-	def play(self, mode="random"):
-
+	def play(self, mode = "random"):
+		assert mode in ['random', 'ai']
 		self.main_net = Network(self.img_width, self.img_height, name="main_net")
-		self.target_net = Network(self.img_width, self.img_height, name="target_net")
 		if len(os.listdir('./checkpoints/main_net/')) != 0:
 			self.main_net.net.load_weights('./checkpoints/main_net/main_checkpoint')	
-			self.target_net.net.load_weights('./checkpoints/target_net/target_checkpoint')
 		#writer = imageio.get_writer('gif/demo.gif', mode='I')
 		game_state = game.GameState()
 		total_steps = 0
@@ -233,8 +245,8 @@ class Flappy:
 def main():
 
 	mod = Flappy()
-	#mod.train()
-	mod.play("ai")
+	mod.train(mode='fixed target')
+	#mod.play("ai")
 
 if __name__ == "__main__":
 	main()
