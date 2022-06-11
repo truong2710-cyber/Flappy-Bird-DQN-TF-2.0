@@ -8,8 +8,10 @@ import random
 import time
 import imageio
 import cv2
+import keyboard
 from PIL import Image
-
+import logging
+import pygame
 sys.path.append("game/")
 import wrapped_flappy_bird as game
 
@@ -76,9 +78,17 @@ class Flappy:
 			return temp_action
 
 	def train(self, mode = 'fixed target'):
+		
 		assert mode in ['fixed target', 'vanilla']
-		hist_score = open("training history/train_hist_{}.txt".format(mode), "w")
-		hist_score.write("Woops! I have deleted the content!")
+		log_dir = "training history/train_hist_{}.txt".format(mode)
+		logger = logging.getLogger(name='train hist')
+		logger.setLevel(logging.INFO)
+		handler = logging.FileHandler(log_dir)
+		handler.setLevel(logging.INFO)
+		formatter = logging.Formatter('%(levelname)s: %(message)s')
+		handler.setFormatter(formatter)
+		logger.addHandler(handler)
+		
 		self.main_net = Network(self.img_width, self.img_height, name="main_net")
 		if mode == 'fixed target':
 			self.target_net = Network(self.img_width, self.img_height, name="target_net")
@@ -178,8 +188,8 @@ class Flappy:
 							self.copy_network(self.target_net.net, self.main_net.net)
 
 				if done:
-					print(game_state.getScore())
-					hist_score.write(str(game_state.getScore()))
+					#print(game_state.getScore())
+					logger.info("Episode {}:".format(i+1),game_state.getScore())
 					break
 
 				total_steps += 1
@@ -189,10 +199,11 @@ class Flappy:
 				if mode == 'fixed target':	
 					self.target_net.net.save_weights('./checkpoints/target_net/target_checkpoint')
 			print("Total rewards in episode " + str(i) + " is " + str(total_reward) + " total number of steps are " + str(total_steps))
-		hist_score.close()
+		
 
-	def play(self, mode = "random"):
-		assert mode in ['random', 'ai']
+	def play(self, mode = "random", fps = 30):
+		clock = pygame.time.Clock()
+		assert mode in ['random', 'ai', 'manual']
 		self.main_net = Network(self.img_width, self.img_height, name="main_net")
 		if len(os.listdir('./checkpoints/main_net/')) != 0:
 			self.main_net.net.load_weights('./checkpoints/main_net/main_checkpoint')	
@@ -214,12 +225,17 @@ class Flappy:
 
 			if mode == "random":
 				temp_action = random.randint(0,1)
-			else:
+			elif mode == 'ai':
 				#print(img_batch[3])
 				temp_weights = self.main_net.net(np.reshape(np.stack(img_batch,axis=2),[-1, 80, 80, 4]))
 				temp_action = np.argmax(temp_weights)
-				print(temp_weights)
-				
+				#print(temp_weights)
+			elif mode == 'manual':
+				for event in pygame.event.get():
+					if event.type == pygame.KEYDOWN and (event.key == pygame.K_SPACE or event.key == pygame.K_UP):
+						temp_action = 1
+					else:
+						temp_action = 0
 			action = np.zeros([2])
 			action[temp_action] = 1
 
@@ -231,11 +247,10 @@ class Flappy:
 			img_batch.insert(0, temp_img)
 			img_batch.pop(len(img_batch)-1)
 
-			#print(temp_action)
-
 			total_steps += 1
-			
+			clock.tick(fps)
 			if done:
+				print("Score:",game_state.getScore())
 				break
 
 		print("Total steps:", str(total_steps))
@@ -246,7 +261,7 @@ def main():
 
 	mod = Flappy()
 	mod.train(mode='fixed target')
-	#mod.play("ai")
+	#mod.play("manual")
 
 if __name__ == "__main__":
 	main()

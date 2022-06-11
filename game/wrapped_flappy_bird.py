@@ -125,7 +125,7 @@ class GameState:
             #SOUNDS['hit'].play()
             #SOUNDS['die'].play()
             terminal = True
-            self.__init__()
+            #self.__init__()
             reward = -1
         
         # draw sprites
