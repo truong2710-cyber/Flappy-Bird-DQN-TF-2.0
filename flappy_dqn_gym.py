@@ -2,13 +2,15 @@ import tensorflow as tf
 from tensorflow.keras.layers import Conv2D, Input, MaxPool2D, Flatten, Dense
 from tensorflow.keras import Sequential
 import numpy as np
+from numpy import savez_compressed
+from numpy import load
+from pathlib import Path
 import sys
 import os
 import random
 import time
 import imageio
 import cv2
-import keyboard
 from PIL import Image
 import logging
 import pygame
@@ -47,6 +49,7 @@ class Flappy:
 
 		self.num_episodes = 10000
 		self.pre_train_steps = 10000
+		self.save_hist_freq = 500
 		self.update_freq = 100  # frequency of updating the target network
 		self.batch_size = 32
 		self.gamma = 0.99
@@ -106,7 +109,11 @@ class Flappy:
 			
 		total_steps = 0
 		total_reward_list = []
-		hist_buffer = []
+		base_path = Path(__file__).parent
+		file_path = str(base_path / "hist.npz")
+		dict_data = load('D:\Q Learning - Flappy Bird\Flappy\hist.npz', allow_pickle=True)
+		hist_buffer = dict_data['arr_0'].tolist()
+		#hist_buffer = []
 		best_reward = 0.0
 
 		for i in range(self.num_episodes):
@@ -148,7 +155,7 @@ class Flappy:
 				
 				if len(hist_buffer) >= 50000:
 					hist_buffer.pop(0)
-
+				
 				# Adding the image to the batch
 
 				img_batch.insert(len(img_batch), temp_img)
@@ -189,10 +196,15 @@ class Flappy:
 
 				if done:
 					#print(game_state.getScore())
-					logger.info("Episode {}:".format(i+1),game_state.getScore())
+					record = "Episode {}:".format(i+1) + str(game_state.getScore())
+					logger.info(record)
 					break
 
 				total_steps += 1
+			
+			if i % self.save_hist_freq == 0:
+					savez_compressed('hist.npz', np.asarray(hist_buffer))
+
 			if total_reward > best_reward:
 				best_reward = total_reward
 				self.main_net.net.save_weights('./checkpoints/main_net/main_checkpoint')
